@@ -5,7 +5,10 @@
 为 Typora / Obsidian 写博客的人准备的补票工具：文章是本地写完的，图片还躺在 `assets/` 里，
 发布前需要一次性换成图床链接——这个程序就是干这个的。
 
-![python](https://img.shields.io/badge/python-3.8%2B-blue)
+[![build](https://github.com/yuexuan521/typora-picgo-uploader/actions/workflows/build.yml/badge.svg)](https://github.com/yuexuan521/typora-picgo-uploader/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/yuexuan521/typora-picgo-uploader)](https://github.com/yuexuan521/typora-picgo-uploader/releases/latest)
+
+![python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
@@ -59,7 +62,7 @@ cd typora-picgo-uploader
 python main.py --help
 ```
 
-需要 Python 3.8+，无第三方依赖。
+需要 Python 3.9+，无第三方依赖（3.9 / 3.12 已在 CI 里跨 Windows/Linux 验证）。
 
 ### 方式三：pip 安装
 

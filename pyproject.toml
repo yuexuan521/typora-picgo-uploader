@@ -7,7 +7,7 @@ name = "typora-picgo-uploader"
 version = "1.0.0"
 description = "批量把 Markdown 里的本地图片上传到 PicGo 图床，并自动替换链接"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "yuexuan" }]
 keywords = ["typora", "picgo", "markdown", "image-hosting", "obsidian"]
