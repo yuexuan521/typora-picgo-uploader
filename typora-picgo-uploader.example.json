@@ -1,0 +1,8 @@
+{
+  "endpoint": "http://127.0.0.1:36677/upload",
+  "concurrency": 4,
+  "timeout": 60,
+  "retries": 3,
+  "recursive": true,
+  "backup": false
+}
