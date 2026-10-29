@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 打 tag 时需要用 GITHUB_TOKEN 创建 Release，默认权限是只读
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -16,8 +20,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.9", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Run tests
@@ -28,8 +32,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install PyInstaller
@@ -42,7 +46,7 @@ jobs:
           --distpath dist --workpath build --specpath build
           main.py
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: typora-picgo-uploader-windows
           path: dist/typora-picgo-uploader.exe
