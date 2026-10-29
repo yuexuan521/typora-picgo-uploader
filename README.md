@@ -54,7 +54,7 @@ new_content = pattern.sub(replace_callback, content)
 ### 方式二：源码运行
 
 ```bash
-git clone https://github.com/yuexuan/typora-picgo-uploader.git
+git clone https://github.com/yuexuan521/typora-picgo-uploader.git
 cd typora-picgo-uploader
 python main.py --help
 ```

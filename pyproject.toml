@@ -21,8 +21,8 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/yuexuan/typora-picgo-uploader"
-Issues = "https://github.com/yuexuan/typora-picgo-uploader/issues"
+Homepage = "https://github.com/yuexuan521/typora-picgo-uploader"
+Issues = "https://github.com/yuexuan521/typora-picgo-uploader/issues"
 
 [project.scripts]
 typora-picgo-uploader = "typora_picgo_uploader.cli:main"
