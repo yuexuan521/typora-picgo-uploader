@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from . import __version__
 from .cache import Cache, file_digest
+from .console import confirm, is_interactive, pause
 from .document import Document, read_document, write_document
 from .parser import ImageRef, apply_replacements, collect_image_refs, is_remote, resolve_local_path
 from .picgo import (
@@ -68,6 +69,7 @@ class Stats:
     missing: int = 0
     remote: int = 0
     replacements: int = 0
+    write_failed: int = 0
 
 
 # --------------------------------------------------------------------------- #
@@ -167,6 +169,8 @@ def build_parser(config: Dict[str, object], config_path: Optional[str]) -> argpa
     parser.add_argument("--report", nargs="?", const="", help="把处理报告写入指定文件（不带值为自动命名）")
     parser.add_argument("--launch-picgo", action="store_true", help="PicGo 未运行时尝试自动启动")
     parser.add_argument("--config", default=config_path, help=f"配置文件路径（默认查找 {CONFIG_NAME}）")
+    parser.add_argument("-y", "--yes", action="store_true", help="双击运行时不再询问，直接执行")
+    parser.add_argument("--no-pause", action="store_true", help="结束后不等待回车（脚本调用时用）")
     parser.add_argument("-q", "--quiet", action="store_true", help="只输出结果摘要")
     parser.add_argument("-V", "--version", action="version", version=f"typora-picgo-uploader {__version__}")
     return parser
@@ -176,9 +180,29 @@ def build_parser(config: Dict[str, object], config_path: Optional[str]) -> argpa
 # 主流程
 # --------------------------------------------------------------------------- #
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    """进程入口：负责双击运行时的确认与退出前暂停。"""
     _safe_console()
-    argv = list(sys.argv[1:] if argv is None else argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    # 只有真正从命令行/双击启动（没有由调用方注入参数）才当作交互式运行
+    interactive = argv is None and is_interactive()
+    code = 1
+    try:
+        code = _run(raw_argv, interactive)
+    except KeyboardInterrupt:
+        print("\n已取消。")
+        code = 130
+    except Exception:
+        import traceback
 
+        traceback.print_exc()
+        code = 1
+    finally:
+        if interactive and "--no-pause" not in raw_argv:
+            pause()
+    return code
+
+
+def _run(argv: Sequence[str], interactive: bool = False) -> int:
     config_path = _default_config_path(argv)
     config = load_config(config_path)
     args = build_parser(config, config_path).parse_args(argv)
@@ -211,13 +235,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if not files:
         out.always("没有需要处理的文件。")
+        if interactive and not args.path and not args.dir_option:
+            out.always("")
+            out.always("提示：本程序默认处理「自己所在的目录」。")
+            out.always("      可以把想处理的文件夹直接拖到本程序的图标上，")
+            out.always("      或者把 exe 复制到博客目录后再双击。")
         return 0
 
     # ---------------- 阶段 1：解析 ---------------- #
     out.say("[1/3] 扫描与解析")
     jobs: List[FileJob] = []
     blob_paths: Dict[str, str] = {}
-    blob_files: Dict[str, List[str]] = {}
 
     for file_path in files:
         stats.files_scanned += 1
@@ -249,11 +277,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 continue
             job.items.append((ref, resolved, digest))
             blob_paths.setdefault(digest, resolved)
-            blob_files.setdefault(digest, []).append(f"{os.path.basename(file_path)}:{ref.line}")
         jobs.append(job)
 
     out.say(f"  引用 {stats.refs_total} 处：远端 {stats.remote}，待处理 {sum(len(j.items) for j in jobs)}，缺失 {stats.missing}")
     out.say(f"  去重后需要上传 {len(blob_paths)} 张图片")
+
+    # 双击运行时先确认，避免误操作系统目录
+    if interactive and not args.dry_run and not args.yes and blob_paths:
+        out.always("")
+        out.always(f"即将上传 {len(blob_paths)} 张图片，并改写 {len(jobs)} 个 Markdown 文件里的链接。")
+        out.always(f"目录：{root_dir}")
+        if not confirm("确认继续？"):
+            out.always("已取消，未做任何修改。")
+            return 0
     out.say()
 
     # ---------------- 阶段 2：上传 ---------------- #
@@ -350,7 +386,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         try:
             written = write_document(job.document, new_text, backup=args.backup)
         except OSError as exc:
+            stats.write_failed += 1
             out.warn(f"  [失败] 写入 {os.path.basename(job.path)}：{exc}")
+            out.warn("         该文件可能被编辑器占用，图片已上传但链接未替换。")
             continue
         if written:
             changed_files += 1
@@ -358,12 +396,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             stats.replacements += len(replacements)
             out.say(f"  {os.path.relpath(job.path, root_dir)}  +{len(replacements)}")
 
-    if changed_files == 0:
+    if changed_files == 0 and stats.write_failed == 0:
         out.say("  没有文件需要修改")
 
     out.say()
     _print_report(out, stats, jobs, blob_paths, args, started, dry_run=False)
-    return 1 if stats.failed else 0
+    return 1 if (stats.failed or stats.write_failed) else 0
 
 
 # --------------------------------------------------------------------------- #
@@ -392,7 +430,18 @@ def _print_report(
         lines.append(f"  上传     成功 {stats.uploaded}，缓存命中 {stats.cached}，失败 {stats.failed}")
     if stats.missing:
         lines.append(f"  缺失     {stats.missing} 处本地图片不存在")
+    if stats.write_failed:
+        lines.append(f"  写回     {stats.write_failed} 个文件写入失败（图片已上传，链接未替换）")
     lines.append(f"  耗时     {elapsed:.1f}s")
+
+    if stats.failed or stats.write_failed:
+        lines.append("")
+        if stats.failed:
+            lines.append("结论：有图片上传失败，对应链接已保留为本地路径。")
+            lines.append("      建议检查 PicGo 日志后重跑，已成功的部分会走缓存不会重复上传。")
+        if stats.write_failed:
+            lines.append("结论：有文件写入失败。请关闭编辑器里打开的文件后重跑，")
+            lines.append("      图片已在图床上，重跑会直接命中缓存。")
 
     if stats.missing:
         lines.append("")

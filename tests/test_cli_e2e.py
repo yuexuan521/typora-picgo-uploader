@@ -158,6 +158,58 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(self._text(md), "![](assets/a.png)\n")
         self.assertEqual(len(_FakePicGo.received), 0)
 
+    def test_interactive_cancel_writes_nothing(self):
+        """双击运行时回答 n，必须一张不传、一个字不改。"""
+        self._image("a.png", b"aaa")
+        md = self._md("post.md", "![](assets/a.png)\n")
+
+        from unittest import mock
+
+        from typora_picgo_uploader import cli as cli_module
+
+        with mock.patch.object(cli_module, "confirm", return_value=False):
+            code = cli_module._run(
+                [self.root, "-e", f"http://127.0.0.1:{self.port}/upload",
+                 "--cache", self.cache, "--no-recursive"],
+                interactive=True,
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self._text(md), "![](assets/a.png)\n")
+        self.assertEqual(len(_FakePicGo.received), 0)
+
+    def test_interactive_confirm_proceeds(self):
+        self._image("a.png", b"aaa")
+        md = self._md("post.md", "![](assets/a.png)\n")
+
+        from unittest import mock
+
+        from typora_picgo_uploader import cli as cli_module
+
+        with mock.patch.object(cli_module, "confirm", return_value=True):
+            code = cli_module._run(
+                [self.root, "-e", f"http://127.0.0.1:{self.port}/upload",
+                 "--cache", self.cache, "--no-recursive"],
+                interactive=True,
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self._text(md), "![](https://cdn.example.com/a.png)\n")
+
+    def test_yes_flag_skips_confirm(self):
+        """--yes 时不再询问（confirm 被调用即判失败）。"""
+        self._image("a.png", b"aaa")
+        md = self._md("post.md", "![](assets/a.png)\n")
+
+        from unittest import mock
+
+        from typora_picgo_uploader import cli as cli_module
+
+        with mock.patch.object(cli_module, "confirm", side_effect=AssertionError("不该询问")):
+            code = self._run("--yes")
+        self.assertEqual(code, 0)
+        self.assertIn("https://cdn.example.com/a.png", self._text(md))
+
     def test_crlf_file_stays_crlf(self):
         self._image("a.png", b"aaa")
         path = os.path.join(self.root, "post.md")
@@ -182,6 +234,38 @@ class EndToEndTest(unittest.TestCase):
                      "--cache", self.cache, "--no-recursive"])
         self.assertEqual(code, 2)
         self.assertEqual(self._text(md), "![](assets/a.png)\n")
+
+    def test_write_failure_sets_exit_code(self):
+        """写回失败时不能假装成功（退出码必须非 0）。"""
+        self._image("a.png", b"aaa")
+        md = self._md("post.md", "![](assets/a.png)\n")
+
+        from unittest import mock
+
+        from typora_picgo_uploader import cli as cli_module
+
+        with mock.patch.object(cli_module, "write_document", side_effect=OSError("文件被占用")):
+            code = self._run()
+
+        self.assertEqual(code, 1)
+        self.assertEqual(self._text(md), "![](assets/a.png)\n")
+
+    def test_second_run_after_write_failure_uses_cache(self):
+        """写回失败后重跑，图片应命中缓存而不是重传。"""
+        self._image("a.png", b"aaa")
+        md = self._md("post.md", "![](assets/a.png)\n")
+
+        from unittest import mock
+
+        from typora_picgo_uploader import cli as cli_module
+
+        with mock.patch.object(cli_module, "write_document", side_effect=OSError("occupied")):
+            self.assertEqual(self._run(), 1)
+        self.assertEqual(len(_FakePicGo.received), 1)
+
+        self.assertEqual(self._run(), 0)
+        self.assertEqual(len(_FakePicGo.received), 1, "重跑不应重复上传")
+        self.assertEqual(self._text(md), "![](https://cdn.example.com/a.png)\n")
 
 
 if __name__ == "__main__":
